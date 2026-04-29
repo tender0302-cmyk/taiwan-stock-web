@@ -114,6 +114,65 @@ STOCK_NAMES_TW = {
 
 # ── 三大法人快取 ──────────────────────────────────────────────
 _institutional_cache = {"data": {}, "date": ""}
+# ── 融資融券快取 ──────────────────────────────────────────────
+_margin_cache = {"data": {}, "date": ""}
+
+def fetch_margin_data() -> dict:
+    """從 TWSE 抓融資融券，回傳 {code: {margin_balance, short_balance, margin_ratio}}"""
+    import datetime, warnings, urllib3
+    warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
+
+    today = datetime.date.today().strftime("%Y%m%d")
+    if _margin_cache["date"] == today and _margin_cache["data"]:
+        return _margin_cache["data"]
+
+    result = {}
+    for days_back in range(1, 6):
+        d = datetime.date.today() - datetime.timedelta(days=days_back)
+        if d.weekday() >= 5:
+            continue
+        date_str = d.strftime("%Y%m%d")
+        url = f"https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?response=json&date={date_str}&selectType=ALL"
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=12, verify=False)
+            if r.status_code == 200 and r.text.strip():
+                data = r.json()
+                if data.get("stat") == "OK":
+                    def pn(s):
+                        try: return int(str(s).replace(",","").strip() or "0")
+                        except: return 0
+                    # 融資：data0, 融券：data1
+                    margin_dict = {}
+                    for row in data.get("data0", []):
+                        try:
+                            if len(row) < 6: continue
+                            code = str(row[0]).strip()
+                            if code and code.isdigit():
+                                margin_dict[code] = pn(row[5])  # 融資餘額（張）
+                        except: continue
+                    short_dict = {}
+                    for row in data.get("data1", []):
+                        try:
+                            if len(row) < 6: continue
+                            code = str(row[0]).strip()
+                            if code and code.isdigit():
+                                short_dict[code] = pn(row[5])  # 融券餘額（張）
+                        except: continue
+                    for code in set(list(margin_dict.keys()) + list(short_dict.keys())):
+                        m = margin_dict.get(code, 0)
+                        s = short_dict.get(code, 0)
+                        # 資券比 = 融資餘額 / 融券餘額（融券>0時才計算）
+                        ratio = round(m / s, 1) if s > 0 else None
+                        result[code] = {
+                            "margin_balance": m,
+                            "short_balance":  s,
+                            "margin_ratio":   ratio,
+                        }
+                    _margin_cache["data"] = result
+                    _margin_cache["date"] = today
+                    break
+        except: pass
+    return result
 
 def fetch_institutional_data() -> dict:
     """從 TWSE 抓三大法人買賣超，回傳 {code: {foreign_net, trust_net, total_net}}"""
@@ -144,9 +203,10 @@ def fetch_institutional_data() -> dict:
                             if len(row) < 11: continue
                             code = row[0].strip()
                             result[code] = {
-                                "foreign_net": pn(row[4]),
-                                "trust_net":   pn(row[7]),
-                                "total_net":   pn(row[-1]),
+                                "foreign_net": pn(row[4]),   # 外資淨買超（張）
+                                "trust_net":   pn(row[7]),   # 投信淨買超（張）
+                                "dealer_net":  pn(row[10]),  # 自營淨買超（張）
+                                "total_net":   pn(row[-1]),  # 三大合計（張）
                             }
                         except: continue
                     _institutional_cache["data"] = result
@@ -161,8 +221,15 @@ def _get_cached(code: str):
     row  = conn.execute("SELECT data, updated_at FROM stock_cache WHERE code=?", (code,)).fetchone()
     conn.close()
     if not row: return None
-    updated = datetime.datetime.fromisoformat(row["updated_at"])
-    if (datetime.datetime.now() - updated).seconds > CACHE_TTL:
+    try:
+        updated = datetime.datetime.fromisoformat(row["updated_at"])
+        now     = datetime.datetime.now()
+        # 修正：用 total_seconds() 而非 seconds
+        # 同時加入日期判斷：只要日期不同就視為過期，確保每天抓最新資料
+        age_seconds = (now - updated).total_seconds()
+        if age_seconds > CACHE_TTL or updated.date() != now.date():
+            return None
+    except Exception:
         return None
     return json.loads(row["data"])
 
@@ -250,8 +317,10 @@ def fetch_one_stock(code: str) -> dict | None:
         en_name = info.get("longName") or info.get("shortName") or code
 
         # 法人資料
-        inst_data = fetch_institutional_data()
-        inst = inst_data.get(code, {})
+        inst_data   = fetch_institutional_data()
+        inst        = inst_data.get(code, {})
+        margin_data = fetch_margin_data()
+        margin      = margin_data.get(code, {})
 
         result = {
             "code":         code,
@@ -282,7 +351,12 @@ def fetch_one_stock(code: str) -> dict | None:
             "revenue_growth": info.get("revenueGrowth"),
             "foreign_net":  inst.get("foreign_net", 0),
             "trust_net":    inst.get("trust_net",   0),
+            "dealer_net":   inst.get("dealer_net",  0),
             "inst_total":   inst.get("total_net",   0),
+            # 融資融券
+            "margin_balance": margin.get("margin_balance", 0),
+            "short_balance":  margin.get("short_balance",  0),
+            "margin_ratio":   margin.get("margin_ratio",   None),
         }
         _set_cache(code, result)
         return result
