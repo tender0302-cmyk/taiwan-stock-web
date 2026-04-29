@@ -53,6 +53,85 @@ STATIC_WATCHLIST = [
 
 CACHE_TTL = 3600   # 1小時快取
 
+# ── 中文名稱對照表 ────────────────────────────────────────────
+STOCK_NAMES_TW = {
+    "2330":"台積電","2317":"鴻海","2454":"聯發科","2308":"台達電",
+    "2412":"中華電","3008":"大立光","2382":"廣達","2603":"長榮",
+    "6505":"台塑化","2881":"富邦金","2882":"國泰金","2886":"兆豐金",
+    "2884":"玉山金","3711":"日月光投控","2357":"華碩","2303":"聯電",
+    "2002":"中鋼","1303":"南亞","1301":"台塑","2409":"友達",
+    "2327":"國巨","2345":"智邦","2376":"技嘉","2395":"研華",
+    "2379":"瑞昱","2408":"南亞科","3034":"聯詠","3045":"台灣大",
+    "4938":"和碩","2891":"中信金","2885":"元大金","2883":"開發金",
+    "2880":"華南金","2890":"永豐金","5880":"合庫金","5871":"中租-KY",
+    "2887":"台新金","2801":"彰銀","2820":"華票","1216":"統一",
+    "1402":"遠東新","1434":"福懋","2501":"國建","2504":"國產",
+    "2511":"太子","2515":"中工","1590":"亞德客-KY","2049":"上銀",
+    "2059":"川湖","2201":"裕隆","2204":"中華","2206":"三陽工業",
+    "2207":"和泰車","2227":"裕日車","1101":"台泥","1102":"亞泥",
+    "2609":"陽明","2615":"萬海","2610":"華航","2618":"長榮航",
+    "2006":"東和鋼鐵","2014":"中鴻","2015":"豐興","2027":"大成鋼",
+    "3481":"群創","2352":"佳世達","2353":"宏碁","2301":"光寶科",
+    "2474":"可成","1326":"台化","2360":"致茂","2362":"藍天",
+    "2374":"佳能","2385":"群光","2392":"正崴","2401":"凌陽",
+    "2404":"漢唐","2406":"國碩","2415":"鉅祥","2417":"圓剛",
+    "2419":"仲琦","2449":"京元電子","2450":"神腦","2451":"創見",
+    "2458":"義隆","2460":"建通","2461":"光群雷","2462":"寶碩",
+    "2464":"盛群","2465":"麗臺","2466":"冠西電","2468":"凌華",
+    "2471":"資通","2472":"立隆電","2475":"華映","2476":"鉅翔",
+    "2477":"美隆電","2480":"敦吉","2481":"強茂","2482":"連展投控",
+    "2483":"百容","2485":"兆赫","2486":"一詮","2488":"漢平",
+    "2489":"瑞軒","2491":"吉祥全","2492":"華景電","2493":"揚博",
+    "2495":"普安","2496":"卓越","2497":"鑫永銓","2506":"太設",
+    "2514":"龍邦","2516":"新建","2520":"冠德","2524":"京城建設",
+    "2527":"宏璟","2528":"皇普","2530":"華建","2534":"宏盛",
+    "2536":"宏普","2537":"聯上發展","2538":"基泰","2542":"興富發",
+}
+
+# ── 三大法人快取 ──────────────────────────────────────────────
+_institutional_cache = {"data": {}, "date": ""}
+
+def fetch_institutional_data() -> dict:
+    """從 TWSE 抓三大法人買賣超，回傳 {code: {foreign_net, trust_net, total_net}}"""
+    import datetime, warnings, urllib3
+    warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
+
+    today = datetime.date.today().strftime("%Y%m%d")
+    if _institutional_cache["date"] == today and _institutional_cache["data"]:
+        return _institutional_cache["data"]
+
+    result = {}
+    for days_back in range(1, 6):
+        d = datetime.date.today() - datetime.timedelta(days=days_back)
+        if d.weekday() >= 5:
+            continue
+        date_str = d.strftime("%Y%m%d")
+        url = f"https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date={date_str}&selectType=ALL"
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=12, verify=False)
+            if r.status_code == 200 and r.text.strip():
+                data = r.json()
+                if data.get("stat") == "OK":
+                    def pn(s):
+                        try: return int(str(s).replace(",","").replace("+","").strip() or "0")
+                        except: return 0
+                    for row in data.get("data", []):
+                        try:
+                            if len(row) < 11: continue
+                            code = row[0].strip()
+                            result[code] = {
+                                "foreign_net": pn(row[4]),
+                                "trust_net":   pn(row[7]),
+                                "total_net":   pn(row[-1]),
+                            }
+                        except: continue
+                    _institutional_cache["data"] = result
+                    _institutional_cache["date"] = today
+                    break
+        except: pass
+    return result
+
+
 def _get_cached(code: str):
     conn = get_conn()
     row  = conn.execute("SELECT data, updated_at FROM stock_cache WHERE code=?", (code,)).fetchone()
@@ -142,11 +221,19 @@ def fetch_one_stock(code: str) -> dict | None:
         if h52 and l52 and h52 != l52:
             pos52 = round((price - l52) / (h52 - l52) * 100, 1)
 
+        # 優先用中文對照表
+        cn_name = STOCK_NAMES_TW.get(code)
+        en_name = info.get("longName") or info.get("shortName") or code
+
+        # 法人資料
+        inst_data = fetch_institutional_data()
+        inst = inst_data.get(code, {})
+
         result = {
             "code":         code,
             "ticker":       ticker,
-            "name":         info.get("longName") or info.get("shortName") or code,
-            "short_name":   info.get("shortName") or code,
+            "name":         cn_name or en_name,
+            "short_name":   cn_name or (info.get("shortName") or code),
             "sector":       SECTOR_MAP.get(code, "其他"),
             "price":        round(price, 2),
             "change_1d":    round(change_1d, 2),
@@ -169,6 +256,9 @@ def fetch_one_stock(code: str) -> dict | None:
             "52w_pos":      pos52,
             "dividend_yield": info.get("dividendYield"),
             "revenue_growth": info.get("revenueGrowth"),
+            "foreign_net":  inst.get("foreign_net", 0),
+            "trust_net":    inst.get("trust_net",   0),
+            "inst_total":   inst.get("total_net",   0),
         }
         _set_cache(code, result)
         return result

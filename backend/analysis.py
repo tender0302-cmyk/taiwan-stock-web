@@ -2,10 +2,11 @@
 #  AI 分析 API — 按需呼叫 Claude
 # =============================================
 
-import os, datetime
+import os, datetime, urllib.parse
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import anthropic
+import feedparser
 
 from auth import get_current_user
 from stocks import fetch_one_stock, SECTOR_MAP
@@ -28,6 +29,32 @@ SECTOR_CHARACTERISTICS = {
 }
 
 STOP_LOSS_PCT = 7
+
+POSITIVE_WORDS = ["創高","突破","漲停","買超","法說","獲利","EPS","營收成長","訂單","利多","上調","看好","強勁","大漲","反彈","AI需求","高成長","旺季"]
+NEGATIVE_WORDS = ["下修","虧損","賣超","跌停","庫存","衰退","降評","利空","大跌","崩跌","衝擊","下滑","裁員","制裁","關稅","跌破"]
+
+def fetch_market_sentiment() -> dict:
+    """抓取台股市場新聞並計算情緒分數"""
+    try:
+        q = urllib.parse.quote("台股 股市 大盤")
+        url = f"https://news.google.com/rss/search?q={q}&hl=zh-TW&gl=TW&ceid=TW%3Azh-Hant"
+        feed = feedparser.parse(url)
+        titles = [e.get("title","") for e in feed.entries[:20]]
+        scores = []
+        for t in titles:
+            pos = sum(1 for w in POSITIVE_WORDS if w in t)
+            neg = sum(1 for w in NEGATIVE_WORDS if w in t)
+            total = pos + neg
+            scores.append((pos - neg) / total if total > 0 else 0.0)
+        sentiment = round(sum(scores) / len(scores), 3) if scores else 0.0
+        label = "正面" if sentiment > 0.3 else ("負面" if sentiment < -0.3 else "中性")
+        return {
+            "sentiment": sentiment,
+            "label": label,
+            "headlines": titles[:5],
+        }
+    except Exception:
+        return {"sentiment": 0.0, "label": "無法取得", "headlines": []}
 
 # ── Request Models ────────────────────────────────────────────
 
@@ -86,7 +113,16 @@ def analyze_stocks(req: StockAnalysisRequest, user: dict = Depends(get_current_u
     quarter     = f"Q{(datetime.datetime.now().month - 1) // 3 + 1}"
     today       = datetime.datetime.now().strftime("%Y-%m-%d")
 
+    # 抓市場新聞情緒
+    news = fetch_market_sentiment()
+    news_text = "\n".join(f"• {h}" for h in news["headlines"]) or "（無法取得）"
+
     prompt = f"""你是台股資深基金經理人。今日({today} {quarter})，投資人勾選了以下{len(stocks)}檔股票請你分析：
+
+市場新聞情緒：{news['label']}（分數：{news['sentiment']:+.2f}）
+最新市場新聞：
+{news_text}
+
 
 {stocks_text}
 
@@ -158,7 +194,7 @@ def analyze_portfolio(req: PortfolioAnalysisRequest, user: dict = Depends(get_cu
                     f"MACD={stock.get('macd',0):.2f} BB={stock.get('bb_pct',50):.0f}% MA20={stock.get('ma20',0)}")
 
         return (
-            f"\n{pnl_emoji} {h['name']}({h['code']}) 持有{h['shares']}張{warn}\n"
+            f"\n{pnl_emoji} {h['name']}({h['code']}) 持有{h['shares']:,}股{warn}\n"
             f"  成本:${h['cost']} 現價:${h.get('current_price','N/A')} "
             f"損益:{h.get('pnl_pct',0):+.2f}% / {h.get('pnl_amt',0):+,.0f}元\n"
             f"  停損線:${sl_price}（距離{sl_gap:.1f}%）持有:{h.get('hold_days',0)}天（{h['buy_date']}起）"
