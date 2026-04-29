@@ -221,15 +221,31 @@ def fetch_institutional_data() -> dict:
                     def pn(s):
                         try: return int(str(s).replace(",","").replace("+","").strip() or "0")
                         except: return 0
-                    for row in data.get("data", []):
+
+                    rows = data.get("data", [])
+                    # DEBUG：印出欄位名稱和第一筆資料，確認 index
+                    fields = data.get("fields", [])
+                    if rows and fields:
+                        print(f"[T86] 欄位({len(fields)}個): {fields}")
+                        print(f"[T86] 第一筆資料({len(rows[0])}欄): {rows[0]}")
+                    elif rows:
+                        print(f"[T86] 第一筆資料({len(rows[0])}欄): {rows[0]}")
+
+                    for row in rows:
                         try:
                             if len(row) < 11: continue
                             code = row[0].strip()
+                            if not code or not code.isdigit(): continue
+                            # T86 欄位（依 TWSE 官方格式）：
+                            # [0]代號 [1]名稱
+                            # [2]外資買 [3]外資賣 [4]外資淨
+                            # [5]投信買 [6]投信賣 [7]投信淨
+                            # [8]自營買 [9]自營賣 [10]自營淨
+                            # [-1]三大合計
+                            # 單位：股 → ÷1000 = 張
                             result[code] = {
-                                # TWSE T86 單位為「股」，÷1000 轉換為「張」
                                 "foreign_net": round(pn(row[4])  / 1000),
                                 "trust_net":   round(pn(row[7])  / 1000),
-                                "dealer_net":  round(pn(row[10]) / 1000),
                                 "total_net":   round(pn(row[-1]) / 1000),
                             }
                         except: continue
