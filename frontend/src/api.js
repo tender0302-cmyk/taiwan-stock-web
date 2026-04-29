@@ -38,6 +38,17 @@ export const stocksAPI = {
   list:       ()     => api.get('/api/stocks/list'),
   getOne:     (code) => api.get(`/api/stocks/${code}`),
   clearCache: ()     => api.delete('/api/stocks/cache'),
+  // 串流載入：每抓到一檔就呼叫 onStock，全部完成呼叫 onDone
+  stream: (token, onStock, onDone, onError) => {
+    const BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+    const es = new EventSource(`${BASE}/api/stocks/stream?token=${token}`);
+    es.onmessage = (e) => {
+      if (e.data === '[DONE]') { es.close(); onDone && onDone(); return; }
+      try { onStock(JSON.parse(e.data)); } catch {}
+    };
+    es.onerror = () => { es.close(); onError && onError(); };
+    return es;   // 回傳 EventSource，呼叫端可以 .close() 取消
+  },
 };
 
 export const portfolioAPI = {

@@ -17,6 +17,9 @@ from database import init_db
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # 啟動時背景預熱股票快取
+    from stocks import start_warmup
+    start_warmup()
     yield
 
 app = FastAPI(

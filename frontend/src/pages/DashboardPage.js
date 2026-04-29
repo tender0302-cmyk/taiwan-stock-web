@@ -56,16 +56,47 @@ export default function DashboardPage() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const navigate = useNavigate();
 
+  const [loadProgress, setLoadProgress] = useState(0);
+  const [cacheStatus,  setCacheStatus]  = useState('');
+
   const loadStocks = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setStocks([]);
     try {
+      // 第一步：先讀快取（快速，幾乎瞬間）
       const res = await stocksAPI.list();
-      setStocks(res.data.stocks || []);
-    } catch (e) {
-      setError('載入股票資料失敗，請稍後再試');
-    } finally {
-      setLoading(false);
-    }
+      const cached = res.data.stocks || [];
+      if (cached.length > 0) {
+        setStocks(cached);
+        setCacheStatus(res.data.cache_status || '');
+        setLoading(false);
+        setLoadProgress(100);
+        return;
+      }
+    } catch (e) {}
+
+    // 第二步：快取空白時串流逐批載入
+    setLoadProgress(0);
+    const token = localStorage.getItem('token') || '';
+    let count = 0;
+    const total = 100;
+    stocksAPI.stream(
+      token,
+      (stock) => {
+        count++;
+        setStocks(prev => {
+          const exists = prev.find(s => s.code === stock.code);
+          if (exists) return prev.map(s => s.code === stock.code ? stock : s);
+          return [...prev, stock];
+        });
+        setLoadProgress(Math.min(99, Math.round(count / total * 100)));
+        if (count === 1) setLoading(false);  // 第一檔進來就停止 loading 讓表格顯示
+      },
+      () => {
+        setLoadProgress(100);
+        setCacheStatus(`已載入 ${count} 檔`);
+      },
+      () => setError('串流載入失敗，請點「更新資料」重試')
+    );
   }, []);
 
   useEffect(() => { loadStocks(); }, [loadStocks]);
@@ -234,13 +265,27 @@ export default function DashboardPage() {
         {loading ? (
           <div className="loading">
             <div className="spinner"/>
-            <span>載入股票資料中（首次可能需要 30-60 秒）...</span>
+            <div style={{ textAlign: 'center' }}>
+              <div>載入股票資料中（首次可能需要 30-60 秒）...</div>
+              <div style={{ marginTop: 12, width: 200, height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden', margin: '12px auto 0' }}>
+                <div style={{ width: `${loadProgress}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.3s' }}/>
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>{loadProgress}%</div>
+            </div>
           </div>
         ) : (
           <div className="card" style={{ padding: 0 }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
-              共 {sorted.length} 檔｜點欄位標題可排序
-              {sortKey && <span style={{ marginLeft: 8, color: 'var(--accent)' }}>排序：{SORT_COLS.find(c=>c.key===sortKey)?.label} {sortDir === 'desc' ? '↓' : '↑'}</span>}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>
+                顯示 {sorted.length} 檔（共 {stocks.length} 檔）｜點欄位標題可排序
+                {sortKey && <span style={{ marginLeft: 8, color: 'var(--accent)' }}>排序：{SORT_COLS.find(c=>c.key===sortKey)?.label} {sortDir === 'desc' ? '↓' : '↑'}</span>}
+              </span>
+              <span style={{ color: 'var(--text-muted)' }}>
+                {cacheStatus && <span style={{ marginRight: 8 }}>{cacheStatus}</span>}
+                {loadProgress < 100 && stocks.length > 0 && (
+                  <span style={{ color: 'var(--amber)' }}>⏳ 載入中 {loadProgress}%</span>
+                )}
+              </span>
             </div>
             <div className="table-wrap">
               <table>

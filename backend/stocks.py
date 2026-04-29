@@ -9,7 +9,31 @@ from auth import get_current_user
 from database import get_conn
 
 warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
-router = APIRouter()
+router    = APIRouter()
+_bg_loading = False   # 是否正在背景載入
+
+# ── 背景預熱：啟動時自動抓所有股票存入快取 ──────────────────
+import threading
+
+def _warmup_cache():
+    """背景執行，啟動時把所有股票預先快取好。"""
+    global _bg_loading
+    _bg_loading = True
+    print("🔄 背景快取預熱開始...")
+    count = 0
+    for code in STATIC_WATCHLIST:
+        try:
+            fetch_one_stock(code)
+            count += 1
+            time.sleep(0.2)   # 降低對 Yahoo Finance 的壓力
+        except Exception:
+            pass
+    _bg_loading = False
+    print(f"✅ 背景快取預熱完成，共 {count} 檔")
+
+def start_warmup():
+    t = threading.Thread(target=_warmup_cache, daemon=True)
+    t.start()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -269,14 +293,70 @@ def fetch_one_stock(code: str) -> dict | None:
 
 @router.get("/list")
 def get_stock_list(user: dict = Depends(get_current_user)):
-    """回傳觀察清單（台灣50+中型100），含快取機制。"""
+    """
+    回傳觀察清單。
+    優先從快取讀取（快），快取不足時即時抓取（慢）。
+    """
     results = []
+    missing  = []
+
+    # 先從快取讀（非常快）
     for code in STATIC_WATCHLIST:
+        cached = _get_cached(code)
+        if cached:
+            results.append(cached)
+        else:
+            missing.append(code)
+
+    # 若有缺漏（快取過期或首次），即時抓缺少的
+    for code in missing:
         data = fetch_one_stock(code)
         if data:
             results.append(data)
-        time.sleep(0.1)
-    return {"stocks": results, "total": len(results)}
+        time.sleep(0.05)
+
+    # 依 STATIC_WATCHLIST 順序排序
+    order = {c: i for i, c in enumerate(STATIC_WATCHLIST)}
+    results.sort(key=lambda s: order.get(s["code"], 999))
+
+    return {
+        "stocks":       results,
+        "total":        len(results),
+        "cache_status": f"快取 {len(results)-len(missing)} 檔 / 即時 {len(missing)} 檔",
+        "is_loading":   _bg_loading,
+    }
+
+@router.get("/stream")
+def get_stock_stream(token: str = ""):
+    """串流回傳股票資料，token 透過 query string 傳遞（EventSource 限制）"""
+    # 驗證 token
+    from auth import _verify
+    try:
+        _verify(token)
+    except Exception:
+        from fastapi.responses import Response
+        return Response(status_code=401)
+    
+    """
+    串流回傳股票資料（Server-Sent Events）。
+    前端可用 EventSource 接收，每抓到一檔就立刻顯示。
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+
+    def generate():
+        for code in STATIC_WATCHLIST:
+            data = fetch_one_stock(code)
+            if data:
+                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+            time.sleep(0.05)
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 @router.get("/{code}")
 def get_single_stock(code: str, user: dict = Depends(get_current_user)):
