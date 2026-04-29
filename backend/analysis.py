@@ -52,7 +52,7 @@ def format_stock_for_prompt(s: dict) -> str:
         f"  現價:${s['price']} 今日:{s.get('change_1d',0):+.1f}% 近5日:{s.get('change_5d',0):+.1f}% 52週位置:{pos or 'N/A'}%\n"
         f"  技術:RSI={s.get('rsi',50)} K={s.get('k',50)} D={s.get('d',50)} MACD={s.get('macd',0):.2f}/Sig={s.get('macd_signal',0):.2f} BB={s.get('bb_pct',50):.0f}% 量={s.get('vol_ratio',1):.1f}x\n"
         f"  均線:MA5={s.get('ma5',0)} MA20={s.get('ma20',0)} MA60={s.get('ma60','N/A')}\n"
-        f"  基本:PE={pe or 'N/A'} 殖利率={f\"{s.get('dividend_yield',0)*100:.1f}%\" if s.get('dividend_yield') else 'N/A'} 營收成長={f'{rg*100:.0f}%' if rg else 'N/A'}\n"
+        f"  基本:PE={pe or 'N/A'} 殖利率={'%.1f%%' % (s.get('dividend_yield',0)*100) if s.get('dividend_yield') else 'N/A'} 營收成長={'%.0f%%' % (rg*100) if rg else 'N/A'}\n"
         f"  產業屬性:{char.get('cycle','N/A')} 領先指標:{char.get('lead_indicator','N/A')} 旺季:{char.get('peak_season','N/A')}"
     )
 
