@@ -18,7 +18,6 @@ const SORT_COLS = [
   { key: '52w_pos',    label: '52週',    align: 'right'  },
   { key: 'foreign_net',   label: '外資(張)',  align: 'right'  },
   { key: 'trust_net',     label: '投信(張)',  align: 'right'  },
-  { key: 'dealer_net',    label: '自營(張)',  align: 'right'  },
   { key: 'margin_ratio',  label: '資券比',   align: 'right'  },
   { key: 'pe_ratio',      label: '本益比',   align: 'right'  },
   { key: 'sector',     label: '產業',    align: 'left'   },
@@ -282,11 +281,14 @@ export default function DashboardPage() {
                 顯示 {sorted.length} 檔（共 {stocks.length} 檔）｜點欄位標題可排序
                 {sortKey && <span style={{ marginLeft: 8, color: 'var(--accent)' }}>排序：{SORT_COLS.find(c=>c.key===sortKey)?.label} {sortDir === 'desc' ? '↓' : '↑'}</span>}
               </span>
-              <span style={{ color: 'var(--text-muted)' }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
                 {cacheStatus && <span style={{ marginRight: 8 }}>{cacheStatus}</span>}
                 {loadProgress < 100 && stocks.length > 0 && (
-                  <span style={{ color: 'var(--amber)' }}>⏳ 載入中 {loadProgress}%</span>
+                  <span style={{ color: 'var(--amber)', marginRight: 8 }}>⏳ 載入中 {loadProgress}%</span>
                 )}
+                <span title="法人買賣超資料由證交所每日收盤後約17:00發布，因此外資/投信欄位為前一交易日資料，股價為即時資料，屬正常現象">
+                  ⚠️ 法人資料為前一交易日（收盤後更新）
+                </span>
               </span>
             </div>
             <div className="table-wrap">
@@ -348,22 +350,16 @@ export default function DashboardPage() {
                             </div>
                           ) : '-'}
                         </td>
-                        {/* 外資（單位：張） */}
+                        {/* 外資（單位：張，為前一交易日資料） */}
                         <td className={`td-number ${instColor(s.foreign_net)}`} style={{ textAlign: 'right', fontSize: 12 }}>
                           {s.foreign_net != null && s.foreign_net !== 0
                             ? `${s.foreign_net > 0 ? '+' : ''}${s.foreign_net.toLocaleString()}`
                             : <span style={{color:'var(--text-muted)'}}>-</span>}
                         </td>
-                        {/* 投信（單位：張） */}
+                        {/* 投信（單位：張，為前一交易日資料） */}
                         <td className={`td-number ${instColor(s.trust_net)}`} style={{ textAlign: 'right', fontSize: 12 }}>
                           {s.trust_net != null && s.trust_net !== 0
                             ? `${s.trust_net > 0 ? '+' : ''}${s.trust_net.toLocaleString()}`
-                            : <span style={{color:'var(--text-muted)'}}>-</span>}
-                        </td>
-                        {/* 自營（單位：張） */}
-                        <td className={`td-number ${instColor(s.dealer_net)}`} style={{ textAlign: 'right', fontSize: 12 }}>
-                          {s.dealer_net != null && s.dealer_net !== 0
-                            ? `${s.dealer_net > 0 ? '+' : ''}${s.dealer_net.toLocaleString()}`
                             : <span style={{color:'var(--text-muted)'}}>-</span>}
                         </td>
                         {/* 資券比 */}

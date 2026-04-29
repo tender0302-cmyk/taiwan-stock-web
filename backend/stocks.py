@@ -141,27 +141,50 @@ def fetch_margin_data() -> dict:
                     def pn(s):
                         try: return int(str(s).replace(",","").strip() or "0")
                         except: return 0
-                    # 融資：data0, 融券：data1
+
                     margin_dict = {}
-                    for row in data.get("data0", []):
-                        try:
-                            if len(row) < 6: continue
-                            code = str(row[0]).strip()
-                            if code and code.isdigit():
-                                margin_dict[code] = pn(row[5])  # 融資餘額（張）
-                        except: continue
-                    short_dict = {}
-                    for row in data.get("data1", []):
-                        try:
-                            if len(row) < 6: continue
-                            code = str(row[0]).strip()
-                            if code and code.isdigit():
-                                short_dict[code] = pn(row[5])  # 融券餘額（張）
-                        except: continue
+                    short_dict  = {}
+
+                    # 格式A：data0（融資）+ data1（融券）
+                    if "data0" in data or "data1" in data:
+                        for row in data.get("data0", []):
+                            try:
+                                if len(row) < 6: continue
+                                code = str(row[0]).strip()
+                                if code and code.isdigit():
+                                    margin_dict[code] = pn(row[5])
+                            except: continue
+                        for row in data.get("data1", []):
+                            try:
+                                if len(row) < 6: continue
+                                code = str(row[0]).strip()
+                                if code and code.isdigit():
+                                    short_dict[code] = pn(row[5])
+                            except: continue
+
+                    # 格式B：單一 data（融資融券合併）
+                    elif "data" in data:
+                        rows = data.get("data", [])
+                        if rows:
+                            row_len = len(rows[0]) if rows else 0
+                            # 依欄位數判斷 index
+                            if row_len >= 19:
+                                mi, si = 5, 13
+                            elif row_len >= 16:
+                                mi, si = 5, 11
+                            else:
+                                mi, si = 5, 10
+                            for row in rows:
+                                try:
+                                    code = str(row[0]).strip()
+                                    if not code or not code.isdigit(): continue
+                                    if len(row) > mi: margin_dict[code] = pn(row[mi])
+                                    if len(row) > si: short_dict[code]  = pn(row[si])
+                                except: continue
+
                     for code in set(list(margin_dict.keys()) + list(short_dict.keys())):
                         m = margin_dict.get(code, 0)
                         s = short_dict.get(code, 0)
-                        # 資券比 = 融資餘額 / 融券餘額（融券>0時才計算）
                         ratio = round(m / s, 1) if s > 0 else None
                         result[code] = {
                             "margin_balance": m,
@@ -350,10 +373,10 @@ def fetch_one_stock(code: str) -> dict | None:
             "52w_pos":      pos52,
             "dividend_yield": info.get("dividendYield"),
             "revenue_growth": info.get("revenueGrowth"),
-            "foreign_net":  inst.get("foreign_net", 0),
-            "trust_net":    inst.get("trust_net",   0),
-            "dealer_net":   inst.get("dealer_net",  0),
-            "inst_total":   inst.get("total_net",   0),
+            "foreign_net":  inst.get("foreign_net", 0),   # 外資淨買超（張）
+            "trust_net":    inst.get("trust_net",   0),   # 投信淨買超（張）
+            "inst_total":   inst.get("total_net",   0),   # 三大合計（張）
+            "inst_date":    _institutional_cache.get("date", ""),  # 法人資料日期
             # 融資融券
             "margin_balance": margin.get("margin_balance", 0),
             "short_balance":  margin.get("short_balance",  0),
