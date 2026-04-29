@@ -16,9 +16,11 @@ const SORT_COLS = [
   { key: 'macd',       label: 'MACD',    align: 'right'  },
   { key: 'vol_ratio',  label: '量能',    align: 'right'  },
   { key: '52w_pos',    label: '52週',    align: 'right'  },
-  { key: 'foreign_net',label: '外資',    align: 'right'  },
-  { key: 'trust_net',  label: '投信',    align: 'right'  },
-  { key: 'pe_ratio',   label: '本益比',  align: 'right'  },
+  { key: 'foreign_net',   label: '外資(張)',  align: 'right'  },
+  { key: 'trust_net',     label: '投信(張)',  align: 'right'  },
+  { key: 'dealer_net',    label: '自營(張)',  align: 'right'  },
+  { key: 'margin_ratio',  label: '資券比',   align: 'right'  },
+  { key: 'pe_ratio',      label: '本益比',   align: 'right'  },
   { key: 'sector',     label: '產業',    align: 'left'   },
 ];
 
@@ -346,17 +348,31 @@ export default function DashboardPage() {
                             </div>
                           ) : '-'}
                         </td>
-                        {/* 外資 */}
+                        {/* 外資（單位：張） */}
                         <td className={`td-number ${instColor(s.foreign_net)}`} style={{ textAlign: 'right', fontSize: 12 }}>
-                          {s.foreign_net != null
-                            ? `${s.foreign_net > 0 ? '+' : ''}${(s.foreign_net/1000).toFixed(0)}萬`
-                            : '-'}
+                          {s.foreign_net != null && s.foreign_net !== 0
+                            ? `${s.foreign_net > 0 ? '+' : ''}${s.foreign_net.toLocaleString()}`
+                            : <span style={{color:'var(--text-muted)'}}>-</span>}
                         </td>
-                        {/* 投信 */}
+                        {/* 投信（單位：張） */}
                         <td className={`td-number ${instColor(s.trust_net)}`} style={{ textAlign: 'right', fontSize: 12 }}>
-                          {s.trust_net != null
+                          {s.trust_net != null && s.trust_net !== 0
                             ? `${s.trust_net > 0 ? '+' : ''}${s.trust_net.toLocaleString()}`
-                            : '-'}
+                            : <span style={{color:'var(--text-muted)'}}>-</span>}
+                        </td>
+                        {/* 自營（單位：張） */}
+                        <td className={`td-number ${instColor(s.dealer_net)}`} style={{ textAlign: 'right', fontSize: 12 }}>
+                          {s.dealer_net != null && s.dealer_net !== 0
+                            ? `${s.dealer_net > 0 ? '+' : ''}${s.dealer_net.toLocaleString()}`
+                            : <span style={{color:'var(--text-muted)'}}>-</span>}
+                        </td>
+                        {/* 資券比 */}
+                        <td className="td-number" style={{ textAlign: 'right', fontSize: 12 }}>
+                          {s.margin_ratio != null
+                            ? <span style={{color: s.margin_ratio > 10 ? 'var(--amber)' : 'var(--text-secondary)'}}>
+                                {s.margin_ratio.toFixed(1)}x
+                              </span>
+                            : <span style={{color:'var(--text-muted)'}}>-</span>}
                         </td>
                         {/* 本益比 */}
                         <td className="td-number" style={{ textAlign: 'right' }}>{s.pe_ratio ? s.pe_ratio.toFixed(1) : '-'}</td>
