@@ -203,10 +203,11 @@ def fetch_institutional_data() -> dict:
                             if len(row) < 11: continue
                             code = row[0].strip()
                             result[code] = {
-                                "foreign_net": pn(row[4]),   # 外資淨買超（張）
-                                "trust_net":   pn(row[7]),   # 投信淨買超（張）
-                                "dealer_net":  pn(row[10]),  # 自營淨買超（張）
-                                "total_net":   pn(row[-1]),  # 三大合計（張）
+                                # TWSE T86 單位為「股」，÷1000 轉換為「張」
+                                "foreign_net": round(pn(row[4])  / 1000),
+                                "trust_net":   round(pn(row[7])  / 1000),
+                                "dealer_net":  round(pn(row[10]) / 1000),
+                                "total_net":   round(pn(row[-1]) / 1000),
                             }
                         except: continue
                     _institutional_cache["data"] = result
@@ -442,9 +443,14 @@ def get_single_stock(code: str, user: dict = Depends(get_current_user)):
 
 @router.delete("/cache")
 def clear_cache(user: dict = Depends(get_current_user)):
-    """清除股價快取，強制重新抓取。"""
+    """清除股價快取（含法人快取），強制重新抓取。"""
     conn = get_conn()
     conn.execute("DELETE FROM stock_cache")
     conn.commit()
     conn.close()
-    return {"message": "快取已清除"}
+    # 同時清除記憶體中的法人/融資快取
+    _institutional_cache["data"] = {}
+    _institutional_cache["date"] = ""
+    _margin_cache["data"] = {}
+    _margin_cache["date"] = ""
+    return {"message": "所有快取已清除，下次載入將抓取最新資料"}
