@@ -457,3 +457,8 @@ def clear_cache(user: dict = Depends(get_current_user)):
     _inst_cache["date"] = ""
     threading.Thread(target=_bg_fetch_all, daemon=True).start()
     return {"message": "快取已清除，背景重新抓取中（約 2-3 分鐘）"}
+
+
+# 向後相容別名（供 portfolio.py、simulation.py 使用）
+def fetch_one_stock(code: str) -> dict | None:
+    return _load_stock(code) or _fetch_stock_data(code)
