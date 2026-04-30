@@ -276,13 +276,30 @@ def _set_cache(code: str, data: dict):
 def fetch_one_stock(code: str) -> dict | None:
     cached = _get_cached(code)
     if cached: return cached
-    ticker = f"{code}.TW"
+
+    # 自動嘗試上市（.TW）和上櫃（.TWO）
+    ticker = None
+    hist   = None
+    for suffix in [".TW", ".TWO"]:
+        try:
+            t = yf.Ticker(f"{code}{suffix}")
+            h = t.history(period="60d")
+            if not h.empty and len(h) >= 5:
+                ticker = f"{code}{suffix}"
+                hist   = h
+                break
+        except Exception:
+            continue
+
+    if not ticker or hist is None:
+        return None
+
+    # stock.info 失敗時給 {}，不中斷整個函數
     try:
         stock = yf.Ticker(ticker)
-        hist  = stock.history(period="60d")
-        if hist.empty or len(hist) < 5:
-            return None
         info  = stock.info or {}
+    except Exception:
+        info = {}
         close = hist["Close"]
         vol   = hist["Volume"]
         price = float(close.iloc[-1])

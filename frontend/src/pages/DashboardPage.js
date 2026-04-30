@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { stocksAPI, analysisAPI } from '../api';
+import api, { stocksAPI, analysisAPI } from '../api';
+const simAPI = { create: (data) => api.post('/api/simulation/', data) };
 
 const SECTORS = ['全部','半導體','電子零組件','金融保險','航運','塑化','鋼鐵','汽車','建材營造','網路通訊','其他'];
 
@@ -56,6 +57,9 @@ export default function DashboardPage() {
   const [manualResult, setManualResult] = useState(null);
   const [manualLoading, setManualLoading] = useState(false);
   const [manualError, setManualError] = useState('');
+  const [simModal, setSimModal] = useState(null);  // {code, name, price}
+  const [simForm, setSimForm] = useState({ direction:'buy', shares:'', entry_price:'', stop_loss:'', take_profit:'', note:'' });
+  const [simLoading, setSimLoading] = useState(false);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const navigate = useNavigate();
@@ -71,6 +75,29 @@ export default function DashboardPage() {
       setManualError(`找不到股票代碼「${code}」，請確認是否正確`);
     } finally {
       setManualLoading(false);
+    }
+  }
+
+  async function handleQuickSim() {
+    if (!simModal || !simForm.shares || !simForm.entry_price) return;
+    setSimLoading(true);
+    try {
+      await simAPI.create({
+        code:        simModal.code,
+        direction:   simForm.direction,
+        shares:      parseFloat(simForm.shares),
+        entry_price: parseFloat(simForm.entry_price),
+        stop_loss:   simForm.stop_loss   ? parseFloat(simForm.stop_loss)   : null,
+        take_profit: simForm.take_profit ? parseFloat(simForm.take_profit) : null,
+        note:        simForm.note,
+      });
+      setSimModal(null);
+      setSimForm({ direction:'buy', shares:'', entry_price:'', stop_loss:'', take_profit:'', note:'' });
+      alert(`✅ 模擬單已建立！前往「模擬下單」頁面查看。`);
+    } catch(e) {
+      alert('建立失敗：' + (e.response?.data?.detail || e.message));
+    } finally {
+      setSimLoading(false);
     }
   }
 
@@ -290,14 +317,23 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn btn-ghost" style={{ fontSize: 12 }}
                 onClick={() => {
                   const code = manualResult.code;
+                  // 加入股池（表格）
+                  setStocks(prev => prev.find(s => s.code === code) ? prev : [manualResult, ...prev]);
+                  // 同時選取
                   toggleSelect(code);
-                  setStocks(prev => prev.find(s => s.code === code) ? prev : [...prev, manualResult]);
                 }}>
-                {selected.has(manualResult.code) ? '✓ 已選取' : '+ 加入選股分析'}
+                {stocks.find(s => s.code === manualResult.code) ? '✓ 已加入股池' : '📋 加入股池'}
+              </button>
+              <button className="btn btn-ghost" style={{ fontSize: 12 }}
+                onClick={() => {
+                  setSimModal({ code: manualResult.code, name: manualResult.short_name || manualResult.name, price: manualResult.price });
+                  setSimForm(f => ({ ...f, entry_price: String(manualResult.price || '') }));
+                }}>
+                🎯 模擬下單
               </button>
             </div>
           </div>
@@ -389,8 +425,23 @@ export default function DashboardPage() {
                         style={{ background: isSelected ? 'rgba(59,130,246,0.06)' : '', cursor: 'pointer' }}
                         onClick={() => toggleSelect(s.code)}
                       >
-                        <td className="check-row" onClick={e => e.stopPropagation()}>
+                        <td className="check-row" onClick={e => e.stopPropagation()}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '12px 8px' }}>
                           <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(s.code)} />
+                          <button
+                            title="快速模擬下單"
+                            style={{
+                              background: 'none', border: '1px solid var(--border)',
+                              borderRadius: 4, cursor: 'pointer', fontSize: 11,
+                              color: 'var(--text-muted)', padding: '2px 5px',
+                              lineHeight: 1,
+                            }}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSimModal({ code: s.code, name: s.short_name || s.name, price: s.price });
+                              setSimForm(f => ({ ...f, entry_price: String(s.price || '') }));
+                            }}
+                          >模擬</button>
                         </td>
                         {/* 股票名稱 */}
                         <td>
