@@ -11,7 +11,7 @@ import urllib3, requests
 import yfinance as yf
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
-from auth import get_current_user, _verify
+from auth import get_current_user
 from database import get_conn
 
 warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)

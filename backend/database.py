@@ -34,7 +34,7 @@ def init_db():
             user_id    INTEGER NOT NULL,
             code       TEXT    NOT NULL,
             name       TEXT    NOT NULL,
-            shares     INTEGER NOT NULL,
+            shares     REAL    NOT NULL,  -- 支援零股（小數）
             cost       REAL    NOT NULL,
             buy_date   TEXT    NOT NULL,
             note       TEXT    DEFAULT '',
