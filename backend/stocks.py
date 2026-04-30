@@ -430,23 +430,58 @@ def start_warmup():
 
 @router.get("/list")
 def get_stock_list(user: dict = Depends(get_current_user)):
+    """
+    載入股票清單：
+    - 先回傳所有已快取的資料（立即）
+    - 若有缺漏，在背景繼續抓（不阻塞請求）
+    - 前端輪詢此 API 直到資料齊全
+    """
     results = []
     missing  = []
     for code in STATIC_WATCHLIST:
         cached = _get_cached(code)
         if cached: results.append(cached)
         else: missing.append(code)
-    for code in missing:
+
+    # 有快取資料就立刻回傳
+    if results:
+        order = {c: i for i, c in enumerate(STATIC_WATCHLIST)}
+        results.sort(key=lambda s: order.get(s["code"], 999))
+        return {
+            "stocks":       results,
+            "total":        len(results),
+            "is_loading":   _bg_loading or len(missing) > 0,
+            "cache_status": f"快取 {len(results)} 檔 / 待載入 {len(missing)} 檔",
+        }
+
+    # 完全沒有快取：同步抓前 20 檔讓用戶先看到一些資料，其餘背景抓
+    sync_batch = missing[:20]
+    bg_batch   = missing[20:]
+
+    for code in sync_batch:
         data = fetch_one_stock(code)
         if data: results.append(data)
-        time.sleep(0.05)
+        time.sleep(0.1)
+
+    # 剩餘的在背景抓
+    if bg_batch and not _bg_loading:
+        def _fetch_remaining():
+            for code in bg_batch:
+                try:
+                    fetch_one_stock(code)
+                    time.sleep(0.2)
+                except Exception:
+                    pass
+        t = threading.Thread(target=_fetch_remaining, daemon=True)
+        t.start()
+
     order = {c: i for i, c in enumerate(STATIC_WATCHLIST)}
     results.sort(key=lambda s: order.get(s["code"], 999))
     return {
-        "stocks":     results,
-        "total":      len(results),
-        "is_loading": _bg_loading,
-        "cache_status": f"快取 {len(results)-len(missing)} 檔 / 即時 {len(missing)} 檔",
+        "stocks":       results,
+        "total":        len(results),
+        "is_loading":   len(bg_batch) > 0,
+        "cache_status": f"已載入 {len(results)} 檔 / 背景載入中 {len(bg_batch)} 檔",
     }
 
 

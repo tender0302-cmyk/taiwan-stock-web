@@ -105,18 +105,36 @@ export default function DashboardPage() {
   const [cacheStatus,  setCacheStatus]  = useState('');
 
   const loadStocks = useCallback(async () => {
-    setLoading(true); setError(''); setLoadProgress(0);
-    try {
-      const res = await stocksAPI.list();
-      const stocks = res.data.stocks || [];
-      setStocks(stocks);
-      setCacheStatus(res.data.cache_status || '');
-      setLoadProgress(100);
-    } catch (e) {
-      setError('載入股票資料失敗，請點「更新資料」重試');
-    } finally {
-      setLoading(false);
+    setLoading(true); setError(''); setLoadProgress(10);
+    
+    // 輪詢機制：每 8 秒嘗試一次，最多等 3 分鐘
+    const maxTries = 22;
+    for (let i = 0; i < maxTries; i++) {
+      try {
+        const res = await stocksAPI.list();
+        const fetched = res.data.stocks || [];
+        if (fetched.length > 0) {
+          setStocks(fetched);
+          setCacheStatus(res.data.cache_status || '');
+          setLoadProgress(100);
+          setLoading(false);
+          return;
+        }
+        // 還沒有資料，更新進度條再等
+        setLoadProgress(Math.min(90, 10 + i * 4));
+      } catch (e) {
+        // 網路錯誤就直接失敗
+        setError('載入股票資料失敗，請點「更新資料」重試');
+        setLoading(false);
+        return;
+      }
+      // 等 8 秒再重試（最後一次不等）
+      if (i < maxTries - 1) {
+        await new Promise(r => setTimeout(r, 8000));
+      }
     }
+    setError('載入超時，請點「更新資料」或「清除快取」重試');
+    setLoading(false);
   }, []);
 
   useEffect(() => { loadStocks(); }, [loadStocks]);
