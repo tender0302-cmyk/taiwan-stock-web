@@ -51,10 +51,28 @@ export default function DashboardPage() {
   const [report,    setReport]    = useState(null);
   const [error,     setError]     = useState('');
   const [sortKey,   setSortKey]   = useState('');
-  const [sortDir,   setSortDir]   = useState('desc'); // 'asc' | 'desc'
+  const [sortDir,   setSortDir]   = useState('desc');
+  const [manualCode, setManualCode] = useState('');
+  const [manualResult, setManualResult] = useState(null);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualError, setManualError] = useState('');
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const navigate = useNavigate();
+
+  async function searchManualCode() {
+    const code = manualCode.trim();
+    if (!code) return;
+    setManualLoading(true); setManualError(''); setManualResult(null);
+    try {
+      const res = await stocksAPI.getOne(code);
+      setManualResult(res.data);
+    } catch (e) {
+      setManualError(`找不到股票代碼「${code}」，請確認是否正確`);
+    } finally {
+      setManualLoading(false);
+    }
+  }
 
   const [loadProgress, setLoadProgress] = useState(0);
   const [cacheStatus,  setCacheStatus]  = useState('');
@@ -177,6 +195,7 @@ export default function DashboardPage() {
         </div>
         <Link className="nav-item active" to="/">股票看板</Link>
         <Link className="nav-item" to="/portfolio">持倉管理</Link>
+        <Link className="nav-item" to="/simulation">模擬下單</Link>
         {user.is_admin && <Link className="nav-item" to="/admin">帳號管理</Link>}
         <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
           <div className="nav-item" onClick={logout} style={{ color: 'var(--red)' }}>登出</div>
@@ -205,8 +224,22 @@ export default function DashboardPage() {
           <input
             className="input" placeholder="搜尋代碼或名稱"
             value={search} onChange={e => setSearch(e.target.value)}
-            style={{ width: 180 }}
+            style={{ width: 160 }}
           />
+          {/* 手動輸入代碼查詢（不限台灣50/中型100清單）*/}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <input
+              className="input" placeholder="手動輸入代碼查詢"
+              value={manualCode}
+              onChange={e => setManualCode(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && searchManualCode()}
+              style={{ width: 160 }}
+            />
+            <button className="btn btn-ghost" style={{ padding: '8px 12px', fontSize: 12 }}
+              onClick={searchManualCode} disabled={manualLoading}>
+              {manualLoading ? '查詢中...' : '🔍 查詢'}
+            </button>
+          </div>
           {SECTORS.map(s => (
             <button key={s} className="btn btn-ghost"
               style={{
@@ -219,6 +252,56 @@ export default function DashboardPage() {
             >{s}</button>
           ))}
         </div>
+
+        {/* 手動查詢結果 */}
+        {manualError && (
+          <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{manualError}</div>
+        )}
+        {manualResult && (
+          <div className="card" style={{ marginBottom: 16, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {manualResult.short_name || manualResult.name}
+                </span>
+                <span className="td-code" style={{ marginLeft: 8 }}>{manualResult.code}</span>
+                <span className="badge badge-sector" style={{ marginLeft: 8 }}>{manualResult.sector}</span>
+              </div>
+              <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setManualResult(null)}>關閉</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12, marginTop: 12 }}>
+              {[
+                { label: '現價',   value: `$${manualResult.price?.toLocaleString()}` },
+                { label: '今日',   value: `${manualResult.change_1d > 0 ? '+' : ''}${manualResult.change_1d?.toFixed(2)}%`, color: manualResult.change_1d >= 0 ? 'var(--red)' : 'var(--green)' },
+                { label: '近5日',  value: `${manualResult.change_5d > 0 ? '+' : ''}${manualResult.change_5d?.toFixed(2)}%`, color: manualResult.change_5d >= 0 ? 'var(--red)' : 'var(--green)' },
+                { label: 'RSI',    value: manualResult.rsi },
+                { label: 'KD',     value: `${manualResult.k?.toFixed(0)}/${manualResult.d?.toFixed(0)}` },
+                { label: 'MACD',   value: manualResult.macd?.toFixed(2) },
+                { label: '量能',   value: `${manualResult.vol_ratio?.toFixed(1)}x` },
+                { label: '52週位置', value: manualResult['52w_pos'] != null ? `${manualResult['52w_pos']}%` : '-' },
+                { label: '外資',   value: manualResult.foreign_net != null ? `${manualResult.foreign_net > 0 ? '+' : ''}${manualResult.foreign_net?.toLocaleString()}張` : '-' },
+                { label: '投信',   value: manualResult.trust_net != null ? `${manualResult.trust_net > 0 ? '+' : ''}${manualResult.trust_net?.toLocaleString()}張` : '-' },
+                { label: '本益比', value: manualResult.pe_ratio?.toFixed(1) || '-' },
+                { label: '市值',   value: `${manualResult.market_cap_b?.toFixed(0)}億` },
+              ].map(item => (
+                <div key={item.label} style={{ background: 'var(--bg-base)', borderRadius: 6, padding: '8px 12px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>{item.label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-mono)', color: item.color || 'var(--text-primary)' }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+              <button className="btn btn-ghost" style={{ fontSize: 12 }}
+                onClick={() => {
+                  const code = manualResult.code;
+                  toggleSelect(code);
+                  setStocks(prev => prev.find(s => s.code === code) ? prev : [...prev, manualResult]);
+                }}>
+                {selected.has(manualResult.code) ? '✓ 已選取' : '+ 加入選股分析'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 勾選工具列 */}
         {selected.size > 0 && (
