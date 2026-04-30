@@ -518,6 +518,80 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {/* 快速模擬下單 Modal */}
+      {simModal && (
+        <div className="modal-overlay" onClick={() => setSimModal(null)}>
+          <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+            <h2>🎯 模擬下單 — {simModal.name} ({simModal.code})</h2>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              現價：<strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>${simModal.price?.toLocaleString()}</strong>
+            </div>
+            <div className="form-group">
+              <label className="form-label">交易方向</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[['buy','做多 📈','var(--red)','var(--red-dim)'],['sell','做空 📉','var(--green)','var(--green-dim)']].map(([dir,label,color,bg]) => (
+                  <button key={dir} className="btn btn-ghost"
+                    style={{ flex:1, justifyContent:'center',
+                      background: simForm.direction === dir ? bg : '',
+                      color: simForm.direction === dir ? color : '',
+                      fontWeight: simForm.direction === dir ? 600 : 400 }}
+                    onClick={() => setSimForm(f => ({ ...f, direction: dir }))}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-group">
+                <label className="form-label">股數 *</label>
+                <input className="input" type="number" min="1" placeholder="如：1000"
+                  value={simForm.shares}
+                  onChange={e => setSimForm(f => ({ ...f, shares: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">進場價 *</label>
+                <input className="input" type="number" step="0.01"
+                  value={simForm.entry_price}
+                  onChange={e => setSimForm(f => ({ ...f, entry_price: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">停損價（選填）</label>
+                <input className="input" type="number" step="0.01" placeholder="觸及顯示警示"
+                  value={simForm.stop_loss}
+                  onChange={e => setSimForm(f => ({ ...f, stop_loss: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">停利價（選填）</label>
+                <input className="input" type="number" step="0.01" placeholder="觸及顯示通知"
+                  value={simForm.take_profit}
+                  onChange={e => setSimForm(f => ({ ...f, take_profit: e.target.value }))} />
+              </div>
+            </div>
+            {simForm.shares && simForm.entry_price && (
+              <div style={{ background:'var(--bg-base)', padding:'8px 12px', borderRadius:6, marginBottom:12, fontSize:12, color:'var(--text-secondary)' }}>
+                模擬總金額：<strong style={{ color:'var(--text-primary)' }}>
+                  ${(Number(simForm.shares) * Number(simForm.entry_price)).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}
+                </strong>
+              </div>
+            )}
+            <div className="form-group">
+              <label className="form-label">備註</label>
+              <input className="input" placeholder="策略說明（選填）"
+                value={simForm.note}
+                onChange={e => setSimForm(f => ({ ...f, note: e.target.value }))} />
+            </div>
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:8 }}>
+              <button className="btn btn-ghost" onClick={() => setSimModal(null)}>取消</button>
+              <button className="btn btn-primary" onClick={handleQuickSim} disabled={simLoading}>
+                {simLoading ? '建立中...' : '建立模擬單'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
     </div>
   );
 }
