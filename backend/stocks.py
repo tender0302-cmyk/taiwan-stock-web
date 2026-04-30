@@ -233,20 +233,28 @@ def fetch_institutional_data() -> dict:
 
                     for row in rows:
                         try:
-                            if len(row) < 11: continue
+                            if len(row) < 18: continue
                             code = row[0].strip()
                             if not code or not code.isdigit(): continue
-                            # T86 欄位（依 TWSE 官方格式）：
-                            # [0]代號 [1]名稱
-                            # [2]外資買 [3]外資賣 [4]外資淨
-                            # [5]投信買 [6]投信賣 [7]投信淨
-                            # [8]自營買 [9]自營賣 [10]自營淨
-                            # [-1]三大合計
+                            # T86 正確欄位（已驗證 19 欄格式）：
+                            # [0] 證券代號
+                            # [1] 證券名稱
+                            # [2] 外陸資買進（不含外資自營）
+                            # [3] 外陸資賣出（不含外資自營）
+                            # [4] 外陸資淨買超（不含外資自營）← 外資
+                            # [5] 外資自營商買進
+                            # [6] 外資自營商賣出
+                            # [7] 外資自營商淨買超           ← 非投信！
+                            # [8] 投信買進
+                            # [9] 投信賣出
+                            # [10] 投信淨買超               ← 真正投信
+                            # [11~17] 自營商各項
+                            # [18] 三大法人合計
                             # 單位：股 → ÷1000 = 張
                             result[code] = {
-                                "foreign_net": round(pn(row[4])  / 1000),
-                                "trust_net":   round(pn(row[7])  / 1000),
-                                "total_net":   round(pn(row[-1]) / 1000),
+                                "foreign_net": round(pn(row[4])  / 1000),  # 外資淨（不含外資自營）
+                                "trust_net":   round(pn(row[10]) / 1000),  # 投信淨 ← 修正！
+                                "total_net":   round(pn(row[18]) / 1000),  # 三大合計
                             }
                         except: continue
                     _institutional_cache["data"] = result
