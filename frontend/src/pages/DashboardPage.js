@@ -233,8 +233,12 @@ export default function DashboardPage() {
             <button className="btn btn-ghost" onClick={loadStocks} disabled={loading}>
               {loading ? '載入中...' : '🔄 更新資料'}
             </button>
-            <button className="btn btn-ghost" onClick={() => stocksAPI.clearCache().then(loadStocks)}>
-              清除快取
+            <button className="btn btn-ghost" onClick={() => {
+              import('../api').then(m => m.default.post('/api/stocks/refresh'))
+                .then(() => { setCacheStatus('背景重新抓取中...'); setTimeout(loadStocks, 3000); })
+                .catch(() => stocksAPI.clearCache().then(loadStocks));
+            }}>
+              強制重抓
             </button>
           </div>
         </div>
