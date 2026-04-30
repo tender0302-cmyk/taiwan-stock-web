@@ -422,23 +422,35 @@ export default function DashboardPage() {
                         style={{ background: isSelected ? 'rgba(59,130,246,0.06)' : '', cursor: 'pointer' }}
                         onClick={() => toggleSelect(s.code)}
                       >
-                        <td className="check-row" onClick={e => e.stopPropagation()}
-                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '12px 8px' }}>
-                          <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(s.code)} />
-                          <button
-                            title="快速模擬下單"
-                            style={{
-                              background: 'none', border: '1px solid var(--border)',
-                              borderRadius: 4, cursor: 'pointer', fontSize: 11,
-                              color: 'var(--text-muted)', padding: '2px 5px',
-                              lineHeight: 1,
-                            }}
-                            onClick={e => {
-                              e.stopPropagation();
-                              setSimModal({ code: s.code, name: s.short_name || s.name, price: s.price });
-                              setSimForm(f => ({ ...f, entry_price: String(s.price || '') }));
-                            }}
-                          >模擬</button>
+                        <td style={{ padding: '8px 8px' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelect(s.code)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            <button
+                              title="快速模擬下單"
+                              style={{
+                                background: 'var(--bg-hover)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 4,
+                                cursor: 'pointer',
+                                fontSize: 10,
+                                color: 'var(--text-secondary)',
+                                padding: '3px 6px',
+                                lineHeight: 1.2,
+                                whiteSpace: 'nowrap',
+                              }}
+                              onClick={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSimModal({ code: s.code, name: s.short_name || s.name, price: s.price });
+                                setSimForm(f => ({ ...f, entry_price: String(s.price || ''), direction: 'buy', shares: '', stop_loss: '', take_profit: '', note: '' }));
+                              }}
+                            >模擬</button>
+                          </div>
                         </td>
                         {/* 股票名稱 */}
                         <td>
