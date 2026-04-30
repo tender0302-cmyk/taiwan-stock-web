@@ -342,15 +342,15 @@ export default function PortfolioPage() {
                   type="number"
                   min="0.01"
                   step="1"
-                  placeholder="例如：1000（整股）或 100（零股）"
+                  placeholder="整張輸入1000、2000，零股輸入100、500"
                   value={form.shares}
                   onChange={e => setForm(f => ({ ...f, shares: e.target.value }))}
                 />
                 {form.shares && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
-                    {Number(form.shares) >= 1000
-                      ? `≈ ${(Number(form.shares) / 1000).toFixed(Number(form.shares) % 1000 === 0 ? 0 : 2)} 張`
-                      : '零股'}
+                    {Number(form.shares) % 1000 === 0 && Number(form.shares) >= 1000
+                      ? `= ${Number(form.shares) / 1000} 張（${Number(form.shares).toLocaleString()} 股）`
+                      : `零股 ${Number(form.shares).toLocaleString()} 股`}
                   </div>
                 )}
               </div>
@@ -367,7 +367,8 @@ export default function PortfolioPage() {
                 />
                 {form.shares && form.cost && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
-                    總成本：${(Number(form.shares) * Number(form.cost)).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}
+                    預估總成本：${(Number(form.shares) * Number(form.cost)).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}
+                    （{Number(form.shares).toLocaleString()} 股 × ${Number(form.cost).toLocaleString()} /股）
                   </div>
                 )}
               </div>
