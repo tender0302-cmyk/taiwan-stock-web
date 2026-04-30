@@ -105,43 +105,18 @@ export default function DashboardPage() {
   const [cacheStatus,  setCacheStatus]  = useState('');
 
   const loadStocks = useCallback(async () => {
-    setLoading(true); setError(''); setStocks([]);
+    setLoading(true); setError(''); setLoadProgress(0);
     try {
-      // 第一步：先讀快取（快速，幾乎瞬間）
       const res = await stocksAPI.list();
-      const cached = res.data.stocks || [];
-      if (cached.length > 0) {
-        setStocks(cached);
-        setCacheStatus(res.data.cache_status || '');
-        setLoading(false);
-        setLoadProgress(100);
-        return;
-      }
-    } catch (e) {}
-
-    // 第二步：快取空白時串流逐批載入
-    setLoadProgress(0);
-    const token = localStorage.getItem('token') || '';
-    let count = 0;
-    const total = 100;
-    stocksAPI.stream(
-      token,
-      (stock) => {
-        count++;
-        setStocks(prev => {
-          const exists = prev.find(s => s.code === stock.code);
-          if (exists) return prev.map(s => s.code === stock.code ? stock : s);
-          return [...prev, stock];
-        });
-        setLoadProgress(Math.min(99, Math.round(count / total * 100)));
-        if (count === 1) setLoading(false);  // 第一檔進來就停止 loading 讓表格顯示
-      },
-      () => {
-        setLoadProgress(100);
-        setCacheStatus(`已載入 ${count} 檔`);
-      },
-      () => setError('串流載入失敗，請點「更新資料」重試')
-    );
+      const stocks = res.data.stocks || [];
+      setStocks(stocks);
+      setCacheStatus(res.data.cache_status || '');
+      setLoadProgress(100);
+    } catch (e) {
+      setError('載入股票資料失敗，請點「更新資料」重試');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadStocks(); }, [loadStocks]);
