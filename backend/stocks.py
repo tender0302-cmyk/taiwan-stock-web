@@ -379,6 +379,10 @@ def get_stock_list(user: dict = Depends(get_current_user)):
     order = {c: i for i, c in enumerate(STATIC_WATCHLIST)}
     results.sort(key=lambda s: order.get(s.get("code",""), 999))
 
+    # 加入推薦分數
+    for s in results:
+        s["score"] = score_stock(s)
+
     return {
         "stocks":     results,
         "total":      len(results),
@@ -432,17 +436,21 @@ def search_stock(code: str, user: dict = Depends(get_current_user)):
     if not data:
         raise HTTPException(status_code=404, detail=f"找不到股票 {code}，請確認代碼是否正確")
     _save_stock(code, data)
+    data["score"] = score_stock(data)
     return data
 
 
 @router.get("/{code}")
 def get_single_stock(code: str, user: dict = Depends(get_current_user)):
     cached = _load_stock(code)
-    if cached: return cached
+    if cached:
+        cached["score"] = score_stock(cached)
+        return cached
     data = _fetch_stock_data(code)
     if not data:
         raise HTTPException(status_code=404, detail=f"找不到股票 {code}")
     _save_stock(code, data)
+    data["score"] = score_stock(data)
     return data
 
 
@@ -462,3 +470,86 @@ def clear_cache(user: dict = Depends(get_current_user)):
 # 向後相容別名（供 portfolio.py、simulation.py 使用）
 def fetch_one_stock(code: str) -> dict | None:
     return _load_stock(code) or _fetch_stock_data(code)
+
+
+# ── 股票評分邏輯（用於一鍵分析）────────────────────────────
+def score_stock(s: dict) -> int:
+    """
+    計算個股推薦分數（0-100），與之前郵件推播版本邏輯相同。
+    80分以上視為值得分析的優質個股。
+    """
+    score = 0
+
+    rsi = s.get("rsi", 50)
+    k   = s.get("k",   50)
+    d   = s.get("d",   50)
+
+    # RSI 嚴重超買排除
+    if rsi > 82:
+        return 0
+
+    # RSI 健康區間
+    if 40 <= rsi <= 75:
+        score += 15
+    elif 30 <= rsi < 40:
+        score += 8
+
+    # KD 多頭
+    if k > d and k > 50:
+        score += 15
+    elif k > d:
+        score += 8
+
+    # MACD 多頭
+    macd = s.get("macd", 0)
+    sig  = s.get("macd_signal", 0)
+    if macd > sig:
+        score += 10
+
+    # 站上 MA20
+    price = s.get("price", 0)
+    ma20  = s.get("ma20", 0)
+    if price > ma20 > 0:
+        score += 8
+
+    # 量能放大
+    vol_ratio = s.get("vol_ratio", 1)
+    if vol_ratio > 1.5:
+        score += 8
+    elif vol_ratio > 1.2:
+        score += 4
+
+    # 近5日漲幅
+    c5 = s.get("change_5d", 0)
+    if c5 and c5 > 3:
+        score += 8
+    elif c5 and c5 > 0:
+        score += 4
+
+    # 布林通道位置（中段最佳）
+    bb = s.get("bb_pct", 50)
+    if 30 <= bb <= 70:
+        score += 5
+
+    # 外資買超
+    foreign = s.get("foreign_net", 0)
+    if foreign > 1000:
+        score += 15
+    elif foreign > 100:
+        score += 10
+    elif foreign > 0:
+        score += 5
+
+    # 投信買超
+    trust = s.get("trust_net", 0)
+    if trust > 100:
+        score += 10
+    elif trust > 0:
+        score += 5
+
+    # 基本面加分
+    rg = s.get("revenue_growth")
+    if rg and rg > 0.1:
+        score += 6
+
+    return min(score, 100)

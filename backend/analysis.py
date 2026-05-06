@@ -117,7 +117,13 @@ def analyze_stocks(req: StockAnalysisRequest, user: dict = Depends(get_current_u
     news = fetch_market_sentiment()
     news_text = "\n".join(f"• {h}" for h in news["headlines"]) or "（無法取得）"
 
-    prompt = f"""你是台股資深基金經理人。今日({today} {quarter})，投資人勾選了以下{len(stocks)}檔股票請你分析：
+    # 計算各股分數
+    from stocks import score_stock
+    for s in stocks:
+        s["score"] = score_stock(s)
+    stocks.sort(key=lambda x: -x.get("score", 0))
+
+    prompt = f"""你是台股資深基金經理人。今日({today} {quarter})，請對以下{len(stocks)}檔股票進行深度選股分析。
 
 市場新聞情緒：{news['label']}（分數：{news['sentiment']:+.2f}）
 最新市場新聞：
@@ -130,31 +136,40 @@ def analyze_stocks(req: StockAnalysisRequest, user: dict = Depends(get_current_u
 
 請輸出完整的選股分析報告（繁體中文）：
 
-## 📊 市場概況
-（2-3句說明今日市場環境）
+## 📊 市場總判斷
+（2-3句：今日趨勢 + 主要驅動力 + 市場情緒評估）
 
-## 🔍 個股深度分析
+## 🚀 買進建議（優先選推薦分數高、產業趨勢強的個股）
 
-對每一檔股票輸出：
+對每一檔股票依以下格式輸出（推薦分數80分以上才列為買進建議，其餘列為觀察名單）：
+
 ### 【股票名稱 (代碼)】｜產業：XXX｜產業評分：⭐⭐⭐⭐（1-5顆）
-- **進出場建議**：買進 / 觀望 / 賣出
-- **建議進場價**：$XXX～$XXX（或「目前價位合理/偏高/偏低」）
-- **目標價**：$XXX（潛在漲幅 +XX%）
-- **停損價**：$XXX（-{STOP_LOSS_PCT}%）
-- **建議張數**：X張（約$XX,XXX）
-- **推薦分數**：XX/100
-- **產業趨勢**：（1句說明產業目前狀況及是否適合布局）
-- **技術面**：（KD/RSI/MACD/均線關鍵判斷）
-- **籌碼面**：（如有資料則說明，否則略過）
-- **基本面**：（EPS/本益比/成長性評價）
-- **持有期間**：短線（1-2週）/ 中線（1-2月）/ 長線（3月+）
-- **主要風險**：（1句）
 
-## ⚠️ 整體風險提示
-（技術面、產業面、總經面各1點）
+| 項目 | 內容 |
+|------|------|
+| 進場價 | $XXX～$XXX |
+| 目標價 | $XXX（+XX%）｜停損：$XXX（-{STOP_LOSS_PCT}%） |
+| 建議張數 | X張（約$XX,XXX） |
+
+- **產業趨勢**：（為何此產業現在值得布局，1句）
+- **技術面**：（RSI/KD/MACD/均線關鍵判斷）
+- **籌碼面**：（法人動向，若無資料則略過）
+- **基本面**：（EPS/營收成長/本益比）
+- **持有期間**：短線（1-2週）/ 中線（1-3月）/ 長線（3月+）
+- **信心分數**：XX/100
+
+## 👀 觀察名單（推薦分數60-79分，說明等待進場條件）
+
+## 📊 投資組合配置建議
+用表格列出建議買進的股票、張數、預估金額、佔比
+
+## ⚠️ 風險提示
+- 技術面：...
+- 產業面：...
+- 總經面：...
 
 ## 📝 免責聲明
-本報告由AI自動生成，僅供參考，不構成投資建議。"""
+本報告由AI自動生成，僅供參考，不構成投資建議。投資有風險，請謹慎評估。"""
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     msg    = client.messages.create(

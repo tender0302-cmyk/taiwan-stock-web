@@ -20,6 +20,7 @@ const SORT_COLS = [
   { key: 'foreign_net',label: '外資(張)',align: 'right'  },
   { key: 'trust_net',  label: '投信(張)',align: 'right'  },
   { key: 'pe_ratio',   label: '本益比',  align: 'right' },
+  { key: 'score',      label: '推薦分',  align: 'right' },
   { key: 'sector',     label: '產業',    align: 'left'  },
 ];
 
@@ -153,6 +154,29 @@ export default function DashboardPage() {
   }
 
   // ── AI 分析 ───────────────────────────────────────────────
+  // 一鍵選出80分以上股票並分析
+  async function runTopAnalysis() {
+    const top = stocks
+      .filter(s => (s.score || 0) >= 80)
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .slice(0, 10);
+    if (!top.length) {
+      showToast('目前沒有80分以上的股票', 'error');
+      return;
+    }
+    const codes = new Set(top.map(s => s.code));
+    setSelected(codes);
+    setAnalyzing(true); setReport(null); setError('');
+    try {
+      const res = await analysisAPI.analyzeStocks(top.map(s => s.code));
+      setReport(res.data.report);
+    } catch (e) {
+      setError(e.response?.data?.detail || 'AI 分析失敗');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   async function runAnalysis() {
     if (!selected.size) return;
     setAnalyzing(true); setReport(null); setError('');
@@ -242,8 +266,14 @@ export default function DashboardPage() {
             <div className="page-subtitle">勾選股票後點擊「AI 分析」取得進出場建議｜點欄位標題排序</div>
           </div>
           <div style={{ display:'flex', gap:10 }}>
+            <button className="btn btn-primary"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #4f6ef7)' }}
+              onClick={runTopAnalysis} disabled={analyzing || loading || !stocks.length}>
+              {analyzing ? <><span className="spinner" style={{ width:13, height:13 }}/> AI 分析中...</>
+                : `🚀 一鍵分析80分以上（${stocks.filter(s => (s.score||0) >= 80).length}檔）`}
+            </button>
             <button className="btn btn-ghost" onClick={loadStocks} disabled={loading}>
-              {loading ? '載入中...' : '🔄 更新資料'}
+              {loading ? '載入中...' : '🔄 更新'}
             </button>
             <button className="btn btn-ghost" onClick={() => {
               api.post('/api/stocks/refresh')
@@ -453,6 +483,19 @@ export default function DashboardPage() {
                             : <span style={{ color:'var(--text-muted)' }}>-</span>}
                         </td>
                         <td className="td-number" style={{ textAlign:'right' }}>{s.pe_ratio ? s.pe_ratio.toFixed(1) : '-'}</td>
+                        <td style={{ textAlign:'right' }}>
+                          {s.score != null ? (
+                            <span style={{
+                              fontFamily:'var(--font-mono)', fontSize:12, fontWeight:600,
+                              color: s.score >= 80 ? 'var(--green)' : s.score >= 60 ? 'var(--amber)' : 'var(--text-muted)',
+                              background: s.score >= 80 ? 'var(--green-dim)' : s.score >= 60 ? 'var(--amber-dim)' : 'transparent',
+                              padding: s.score >= 60 ? '2px 6px' : '0',
+                              borderRadius: 4,
+                            }}>
+                              {s.score}
+                            </span>
+                          ) : '-'}
+                        </td>
                         <td><span className="badge badge-sector">{s.sector}</span></td>
                       </tr>
                     );
